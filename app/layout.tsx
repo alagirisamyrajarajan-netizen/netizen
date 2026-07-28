@@ -11,6 +11,9 @@ export const metadata: Metadata = {
     description: 'Bypass WiFi restrictions through our serverless edge network.',
     type: 'website',
   },
+  verification: {
+    google: 'google72df8b2f8b78cfe0',
+  },
 };
 
 export default function RootLayout({
