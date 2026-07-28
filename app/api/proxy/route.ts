@@ -15,26 +15,47 @@ function isBlockedUrl(url: string): boolean {
   return BLOCKED_PATTERNS.some((p) => p.test(url));
 }
 
+// Infer proper mime types for images, fonts, and stylesheets if headers are missing or generic
+function inferContentType(url: string, rawContentType?: string | null): string {
+  if (
+    rawContentType &&
+    !rawContentType.includes('octet-stream') &&
+    !rawContentType.includes('text/plain')
+  ) {
+    return rawContentType;
+  }
+  const cleanUrl = url.split('?')[0].split('#')[0].toLowerCase();
+  if (cleanUrl.endsWith('.svg')) return 'image/svg+xml';
+  if (cleanUrl.endsWith('.png')) return 'image/png';
+  if (cleanUrl.endsWith('.jpg') || cleanUrl.endsWith('.jpeg')) return 'image/jpeg';
+  if (cleanUrl.endsWith('.webp')) return 'image/webp';
+  if (cleanUrl.endsWith('.gif')) return 'image/gif';
+  if (cleanUrl.endsWith('.ico')) return 'image/x-icon';
+  if (cleanUrl.endsWith('.avif')) return 'image/avif';
+  if (cleanUrl.endsWith('.woff2')) return 'font/woff2';
+  if (cleanUrl.endsWith('.woff')) return 'font/woff';
+  if (cleanUrl.endsWith('.css')) return 'text/css';
+  if (cleanUrl.endsWith('.js')) return 'text/javascript';
+  return rawContentType || 'text/html';
+}
+
 // Normalize user search queries vs valid URLs
 function normalizeTargetUrl(input: string): string {
   const trimmed = input.trim();
   if (!trimmed) return 'https://example.com';
 
-  // If already starts with http/https
   if (/^https?:\/\//i.test(trimmed)) {
     return trimmed;
   }
 
-  // If input contains spaces or no dot, treat as search query
   if (trimmed.includes(' ') || !trimmed.includes('.')) {
     return `https://html.duckduckgo.com/html/?q=${encodeURIComponent(trimmed)}`;
   }
 
-  // Otherwise assume it's a domain name (e.g. "google.com")
   return `https://${trimmed}`;
 }
 
-// ─── HTML & Asset Rewriter + In-Iframe Interceptor ────────────────────
+// ─── Comprehensive HTML & Asset Rewriter + In-Iframe Interceptor ──────
 function processHtmlAndCss(content: string, targetUrl: string, requestOrigin: string): string {
   try {
     const targetObj = new URL(targetUrl);
@@ -61,7 +82,6 @@ function processHtmlAndCss(content: string, targetUrl: string, requestOrigin: st
     let rewritten = content;
 
     // Inline JS script to intercept link clicks and form submits inside the iframe
-    // so navigating or searching inside the browser stays in the proxy with NO 404s!
     const interceptorScript = `
       <script>
         (function() {
@@ -108,18 +128,18 @@ function processHtmlAndCss(content: string, targetUrl: string, requestOrigin: st
       rewritten = baseTag + rewritten;
     }
 
-    // 2. Rewrite src="..." (images, scripts, logos, svgs, media, iframes)
-    rewritten = rewritten.replace(/\bsrc=["']([^"']+)["']/gi, (_, url) => {
-      return `src="${makeProxyUrl(url)}"`;
+    // 2. Rewrite src & data-src (images, logos, scripts, svgs, media, iframes)
+    rewritten = rewritten.replace(/\b(src|data-src|poster|data)=["']([^"']+)["']/gi, (_, attr, url) => {
+      return `${attr}="${makeProxyUrl(url)}"`;
     });
 
-    // 3. Rewrite href="..." for stylesheets, icons, links
-    rewritten = rewritten.replace(/\bhref=["']([^"']+)["']/gi, (_, url) => {
-      return `href="${makeProxyUrl(url)}"`;
+    // 3. Rewrite href & xlink:href (stylesheets, icons, SVG images, links)
+    rewritten = rewritten.replace(/\b(href|xlink:href)=["']([^"']+)["']/gi, (_, attr, url) => {
+      return `${attr}="${makeProxyUrl(url)}"`;
     });
 
-    // 4. Rewrite srcset="..." (responsive images/logos)
-    rewritten = rewritten.replace(/\bsrcset=["']([^"']+)["']/gi, (_, srcset) => {
+    // 4. Rewrite srcset & data-srcset (responsive images & lazy loaded picture candidates)
+    rewritten = rewritten.replace(/\b(srcset|data-srcset)=["']([^"']+)["']/gi, (_, attr, srcset) => {
       const parts = srcset.split(',').map((part: string) => {
         const trimmed = part.trim();
         const spaceIdx = trimmed.indexOf(' ');
@@ -128,7 +148,7 @@ function processHtmlAndCss(content: string, targetUrl: string, requestOrigin: st
         const descriptor = trimmed.slice(spaceIdx);
         return `${makeProxyUrl(url)}${descriptor}`;
       });
-      return `srcset="${parts.join(', ')}"`;
+      return `${attr}="${parts.join(', ')}"`;
     });
 
     // 5. Rewrite inline style url(...) and CSS url(...)
@@ -189,7 +209,7 @@ async function handleProxy(request: NextRequest, method: string) {
 
       if (responseData.body && javaResponse.ok) {
         let finalBody = responseData.body;
-        const resCt = responseData.contentType || 'text/html';
+        const resCt = inferContentType(targetUrl, responseData.contentType);
 
         if (resCt.includes('text/html')) {
           finalBody = processHtmlAndCss(finalBody, targetUrl, requestOrigin);
@@ -201,6 +221,7 @@ async function handleProxy(request: NextRequest, method: string) {
           headers: {
             'Content-Type': resCt,
             'Access-Control-Allow-Origin': '*',
+            'Cache-Control': resCt.startsWith('image/') ? 'public, max-age=86400' : 'no-cache',
             'X-Proxied-By': 'NetBypass/Java-SpringBoot',
             'X-Latency-Ms': String(responseData.latencyMs || 0),
             'X-Status-Code': String(responseData.statusCode || 200),
@@ -258,7 +279,7 @@ async function handleProxy(request: NextRequest, method: string) {
 
     const response = await fetch(targetUrl, fetchOptions);
     statusCode = response.status;
-    contentType = response.headers.get('content-type') || 'text/plain';
+    contentType = inferContentType(targetUrl, response.headers.get('content-type'));
 
     let finalResponseBody: BodyInit;
 
@@ -296,8 +317,6 @@ async function handleProxy(request: NextRequest, method: string) {
       })();
     }
 
-    // Always return HTTP 200 for proxied HTML/content so Next.js never replaces
-    // the iframe body with Next.js internal 404 page!
     return new NextResponse(finalResponseBody, {
       status: 200,
       headers: {
@@ -306,7 +325,8 @@ async function handleProxy(request: NextRequest, method: string) {
         'X-Latency-Ms': String(latency),
         'X-Status-Code': String(statusCode),
         'X-Backend': 'next-direct',
-        ...(contentType ? { 'Content-Type': contentType } : {}),
+        'Content-Type': contentType,
+        'Cache-Control': contentType.startsWith('image/') || contentType.startsWith('font/') ? 'public, max-age=86400' : 'no-cache',
       },
     });
   } catch (err) {
