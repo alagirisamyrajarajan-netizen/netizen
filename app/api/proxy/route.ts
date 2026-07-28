@@ -71,8 +71,18 @@ function processHtmlAndCss(content: string, targetUrl: string, requestOrigin: st
       ) {
         return raw;
       }
+
+      // Prevent double proxying if raw already contains /api/proxy?url=
+      if (raw.includes('/api/proxy?url=')) {
+        return raw;
+      }
+
       try {
         const abs = new URL(raw, targetUrl).href;
+        // Prevent proxying requests pointing to our own app origin recursively
+        if (abs.startsWith(requestOrigin) && !abs.includes('/api/proxy?url=')) {
+          return raw;
+        }
         return `${requestOrigin}/api/proxy?url=${encodeURIComponent(abs)}`;
       } catch {
         return raw;
@@ -82,36 +92,54 @@ function processHtmlAndCss(content: string, targetUrl: string, requestOrigin: st
     let rewritten = content;
 
     // Inline JS script to intercept link clicks and form submits inside the iframe
+    // Prevents recursive nesting of netbypass-app.vercel.app inside itself!
     const interceptorScript = `
       <script>
         (function() {
           try {
             document.addEventListener('click', function(e) {
               var anchor = e.target.closest('a');
-              if (anchor && anchor.href && !anchor.href.startsWith('javascript:')) {
-                var href = anchor.getAttribute('href');
-                if (href && !href.startsWith('#')) {
-                  e.preventDefault();
-                  var absUrl = anchor.href;
-                  if (absUrl.startsWith(window.location.origin + '/api/proxy?url=')) {
-                    window.location.href = absUrl;
-                  } else {
-                    window.location.href = '${requestOrigin}/api/proxy?url=' + encodeURIComponent(absUrl);
-                  }
-                }
+              if (!anchor) return;
+              var href = anchor.getAttribute('href');
+              if (!href || href.startsWith('javascript:') || href.startsWith('#') || href.startsWith('data:')) return;
+
+              e.preventDefault();
+
+              // If already a proxy link:
+              if (href.includes('/api/proxy?url=')) {
+                window.location.href = href;
+                return;
+              }
+
+              try {
+                var absUrl = new URL(href, '${targetUrl}').href;
+                window.location.href = '${requestOrigin}/api/proxy?url=' + encodeURIComponent(absUrl);
+              } catch(err) {
+                window.location.href = href;
               }
             }, true);
 
             document.addEventListener('submit', function(e) {
               var form = e.target;
-              if (form && form.action) {
-                e.preventDefault();
-                var formData = new FormData(form);
-                var params = new URLSearchParams(formData).toString();
-                var actionUrl = form.action;
-                var finalUrl = actionUrl + (actionUrl.includes('?') ? '&' : '?') + params;
-                window.location.href = '${requestOrigin}/api/proxy?url=' + encodeURIComponent(finalUrl);
+              if (!form) return;
+              var action = form.getAttribute('action') || '';
+              if (action.startsWith('javascript:')) return;
+
+              e.preventDefault();
+              var formData = new FormData(form);
+              var params = new URLSearchParams(formData).toString();
+
+              if (action.includes('/api/proxy?url=')) {
+                var finalUrl = action + (action.includes('?') ? '&' : '?') + params;
+                window.location.href = finalUrl;
+                return;
               }
+
+              try {
+                var absAction = new URL(action || '', '${targetUrl}').href;
+                var finalUrl = absAction + (absAction.includes('?') ? '&' : '?') + params;
+                window.location.href = '${requestOrigin}/api/proxy?url=' + encodeURIComponent(finalUrl);
+              } catch(err) {}
             }, true);
           } catch(err) {}
         })();
