@@ -396,10 +396,10 @@ function ProxyBrowser({ onNewLog }: { onNewLog: () => void }) {
 
           {!loading && result && !result.error && (
             <>
-              {/* Render mode — HTML in iframe */}
+              {/* Render mode — HTML in iframe via srcDoc */}
               {isHtml && viewMode === 'render' && (
                 <iframe
-                  src={iframeProxySrc}
+                  srcDoc={result.body}
                   className="browser-iframe"
                   title="Proxied content"
                   sandbox="allow-scripts allow-same-origin allow-forms"
