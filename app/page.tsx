@@ -200,17 +200,7 @@ function ProxyBrowser({ onNewLog }: { onNewLog: () => void }) {
   };
 
   const isHtml = result?.contentType?.includes('text/html');
-
-  // Write rendered HTML into iframe
-  useEffect(() => {
-    if (!result || !iframeRef.current || !isHtml || viewMode !== 'render') return;
-    const doc = iframeRef.current.contentDocument;
-    if (!doc) return;
-    const rewritten = rewriteHtml(result.body, result.targetUrl);
-    doc.open();
-    doc.write(rewritten);
-    doc.close();
-  }, [result, viewMode, isHtml]);
+  const iframeProxySrc = result?.targetUrl ? `/api/proxy?url=${encodeURIComponent(result.targetUrl)}` : '';
 
   const presets = [
     { label: 'Example.com', url: 'https://example.com' },
@@ -349,7 +339,7 @@ function ProxyBrowser({ onNewLog }: { onNewLog: () => void }) {
               {/* Render mode — HTML in iframe */}
               {isHtml && viewMode === 'render' && (
                 <iframe
-                  ref={iframeRef}
+                  src={iframeProxySrc}
                   className="browser-iframe"
                   title="Proxied content"
                   sandbox="allow-scripts allow-same-origin allow-forms"
