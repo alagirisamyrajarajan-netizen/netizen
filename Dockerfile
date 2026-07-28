@@ -1,8 +1,3 @@
-# ═══════════════════════════════════════════════════════════════
-# NetBypass Java Service — Dockerfile
-# For deployment on Railway, Render, or any container platform.
-# ═══════════════════════════════════════════════════════════════
-
 # Stage 1: Build with Maven
 FROM maven:3.9-eclipse-temurin-17 AS builder
 
@@ -31,4 +26,3 @@ EXPOSE 8080
 
 # Run the Spring Boot app
 ENTRYPOINT ["java", "-XX:+UseContainerSupport", "-XX:MaxRAMPercentage=75", "-jar", "app.jar"]
-
