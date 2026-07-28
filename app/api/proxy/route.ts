@@ -67,6 +67,11 @@ function normalizeTargetUrl(input: string): string {
     trimmed = `https://${trimmed}`;
   }
 
+  // Route YouTube desktop URLs to m.youtube.com to bypass Polymer SPA CORS skeleton blocks!
+  if (/^https?:\/\/(www\.)?youtube\.com/i.test(trimmed)) {
+    trimmed = trimmed.replace(/^https?:\/\/(www\.)?youtube\.com/i, 'https://m.youtube.com');
+  }
+
   if (trimmed.includes('google.com/search') && !trimmed.includes('gbv=1')) {
     trimmed += (trimmed.includes('?') ? '&' : '?') + 'gbv=1';
   }
@@ -160,7 +165,7 @@ function processHtmlAndCss(content: string, targetUrl: string, requestOrigin: st
               }
             }, true);
 
-            // 2. Intercept Form Submits (Google Search, DuckDuckGo)
+            // 2. Intercept Form Submits
             document.addEventListener('submit', function(e) {
               var form = e.target;
               if (!form) return;
@@ -337,19 +342,19 @@ async function handleProxy(request: NextRequest, method: string) {
   let errorMessage: string | undefined;
 
   try {
+    const isMobileTarget = targetUrl.includes('google.com') || targetUrl.includes('youtube.com') || targetUrl.includes('youtu.be');
     const fetchOptions: RequestInit = {
       method,
       headers: {
-        'User-Agent':
-          targetUrl.includes('google.com')
-            ? 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Mobile Safari/537.36'
-            : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+        'User-Agent': isMobileTarget
+          ? 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'
+          : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
         Accept:
           'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
         'Accept-Language': 'en-US,en;q=0.9',
-        'Sec-Ch-Ua': '"Google Chrome";v="123", "Not:A-Brand";v="8", "Chromium";v="123"',
-        'Sec-Ch-Ua-Mobile': targetUrl.includes('google.com') ? '?1' : '?0',
-        'Sec-Ch-Ua-Platform': targetUrl.includes('google.com') ? '"Android"' : '"Windows"',
+        'Sec-Ch-Ua': isMobileTarget ? '"Apple Safari";v="17"' : '"Google Chrome";v="123", "Not:A-Brand";v="8", "Chromium";v="123"',
+        'Sec-Ch-Ua-Mobile': isMobileTarget ? '?1' : '?0',
+        'Sec-Ch-Ua-Platform': isMobileTarget ? '"iOS"' : '"Windows"',
         'Sec-Fetch-Dest': 'document',
         'Sec-Fetch-Mode': 'navigate',
         'Sec-Fetch-Site': 'none',

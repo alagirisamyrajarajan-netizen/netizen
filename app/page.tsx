@@ -101,6 +101,10 @@ function ProxyBrowser({ onNewLog, onReturnHome }: { onNewLog: () => void; onRetu
       }
     }
 
+    if (/^https?:\/\/(www\.)?youtube\.com/i.test(normalised)) {
+      normalised = normalised.replace(/^https?:\/\/(www\.)?youtube\.com/i, 'https://m.youtube.com');
+    }
+
     setUrl(normalised);
     setLoading(true);
     setResult(null);
@@ -182,8 +186,8 @@ function ProxyBrowser({ onNewLog, onReturnHome }: { onNewLog: () => void; onRetu
   const isHtml = result?.contentType?.includes('text/html');
 
   const presets = [
-    { label: 'Google Search', url: 'https://html.duckduckgo.com' },
-    { label: 'YouTube', url: 'https://www.youtube.com' },
+    { label: 'Google Search', url: 'https://www.google.com/search?gbv=1&q=NetBypass' },
+    { label: 'YouTube', url: 'https://m.youtube.com' },
     { label: 'Wikipedia', url: 'https://en.wikipedia.org' },
     { label: 'Example.com', url: 'https://example.com' },
     { label: 'httpbin API', url: 'https://httpbin.org/get' },
