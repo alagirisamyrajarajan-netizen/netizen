@@ -178,6 +178,20 @@ public class ProxyController {
     // ─────────────────────────────────────────────────────────────────
 
     /**
+     * GET /health & GET /api/health
+     *
+     * Ultra-fast health check endpoint for container orchestrators (Railway / K8s).
+     * Returns 200 OK immediately without DB lookup to ensure healthchecks pass.
+     */
+    @GetMapping({"/health", "/healthcheck"})
+    public ResponseEntity<Map<String, String>> health() {
+        Map<String, String> res = new HashMap<>();
+        res.put("status", "UP");
+        res.put("timestamp", OffsetDateTime.now().toString());
+        return ResponseEntity.ok(res);
+    }
+
+    /**
      * GET /api/status
      *
      * Returns service health info including DB connectivity.
