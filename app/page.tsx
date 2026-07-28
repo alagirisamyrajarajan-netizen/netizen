@@ -65,7 +65,7 @@ function StatusBadge({ code, success }: { code: number; success: boolean }) {
 }
 
 // ─── Proxy Browser Component ──────────────────────────────
-function ProxyBrowser({ onNewLog }: { onNewLog: () => void }) {
+function ProxyBrowser({ onNewLog, onReturnHome }: { onNewLog: () => void; onReturnHome?: () => void }) {
   const [url, setUrl] = useState('https://example.com');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ProxyResult | null>(null);
@@ -172,6 +172,16 @@ function ProxyBrowser({ onNewLog }: { onNewLog: () => void }) {
           </div>
 
           <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+            {onReturnHome && (
+              <button
+                className="btn btn-sm btn-ghost"
+                onClick={onReturnHome}
+                title="Return Back to Home"
+                style={{ padding: '4px 8px', fontSize: 11, gap: 4, color: 'var(--clr-primary)' }}
+              >
+                <ArrowLeft size={13} /> Return Back
+              </button>
+            )}
             <button
               className="btn btn-sm btn-ghost"
               onClick={() => handleProxy(url)}
@@ -439,7 +449,7 @@ export default function Home() {
         {/* Tab View 2: Inbuilt NetBypass Browser */}
         {activeTab === 'browser' && (
           <div style={{ flex: 1, minHeight: 600 }}>
-            <ProxyBrowser onNewLog={fetchLogs} />
+            <ProxyBrowser onNewLog={fetchLogs} onReturnHome={() => setActiveTab('ai')} />
           </div>
         )}
 

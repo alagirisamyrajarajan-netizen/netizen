@@ -6,93 +6,73 @@ interface SearchFact {
   source?: string;
 }
 
-// Multi-engine free real-time search fetcher (DuckDuckGo Instant API + Wikipedia API + DDG HTML)
+// Multi-engine free real-time search fetcher (DuckDuckGo + Wikipedia)
 async function fetchRealTimeFacts(query: string): Promise<SearchFact[]> {
   const facts: SearchFact[] = [];
   const cleanQuery = query.trim();
   if (!cleanQuery) return facts;
 
-  // Engine 1: Wikipedia Search API (Instant facts for any concept/event/person)
+  // Engine 1: DuckDuckGo HTML Web Search Engine (Live real-time web facts)
   try {
-    const wikiUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(
-      cleanQuery
-    )}&format=json&origin=*`;
-    const wikiRes = await fetch(wikiUrl, { headers: { 'User-Agent': 'NetBypassAI/1.0' } });
-    if (wikiRes.ok) {
-      const wikiData = await wikiRes.json();
-      const items = wikiData?.query?.search || [];
-      items.slice(0, 3).forEach((item: { title: string; snippet: string }) => {
-        const text = item.snippet.replace(/<[^>]+>/g, '').trim();
-        if (text) {
+    const htmlUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(cleanQuery)}`;
+    const htmlRes = await fetch(htmlUrl, {
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+        'Accept-Language': 'en-US,en;q=0.9',
+      },
+    });
+
+    if (htmlRes.ok) {
+      const html = await htmlRes.text();
+      const titleMatches = Array.from(html.matchAll(/<a[^>]*class="result__a"[^>]*>(.*?)<\/a>/gi)).map(
+        (m) => m[1].replace(/<[^>]+>/g, '').trim()
+      );
+      const snippetMatches = Array.from(html.matchAll(/<a[^>]*class="result__snippet"[^>]*>(.*?)<\/a>/gi)).map(
+        (m) => m[1].replace(/<[^>]+>/g, '').trim()
+      );
+      const urlMatches = Array.from(html.matchAll(/<a[^>]*class="result__url"[^>]*>(.*?)<\/a>/gi)).map(
+        (m) => m[1].replace(/<[^>]+>/g, '').trim()
+      );
+
+      const count = Math.min(titleMatches.length, 5);
+      for (let i = 0; i < count; i++) {
+        if (titleMatches[i] && snippetMatches[i]) {
           facts.push({
-            title: item.title,
-            snippet: text,
-            source: `Wikipedia - ${item.title}`,
+            title: titleMatches[i],
+            snippet: snippetMatches[i],
+            source: urlMatches[i] ? (urlMatches[i].startsWith('http') ? urlMatches[i] : `https://${urlMatches[i]}`) : 'DuckDuckGo Web Search',
           });
         }
-      });
+      }
     }
   } catch (err) {
-    console.warn('Wikipedia search fetch error:', err);
+    console.warn('HTML search fetch error:', err);
   }
 
-  // Engine 2: DuckDuckGo Instant Answer API (Free JSON API)
-  try {
-    const ddgApiUrl = `https://api.duckduckgo.com/?q=${encodeURIComponent(cleanQuery)}&format=json&no_html=1`;
-    const ddgRes = await fetch(ddgApiUrl, { headers: { 'User-Agent': 'NetBypassAI/1.0' } });
-    if (ddgRes.ok) {
-      const ddgData = await ddgRes.json();
-      if (ddgData.AbstractText) {
-        facts.push({
-          title: ddgData.Heading || cleanQuery,
-          snippet: ddgData.AbstractText,
-          source: ddgData.AbstractURL || 'DuckDuckGo Instant Answer',
-        });
-      }
-      if (ddgData.RelatedTopics && Array.isArray(ddgData.RelatedTopics)) {
-        ddgData.RelatedTopics.slice(0, 3).forEach((t: { Text?: string }) => {
-          if (t.Text && t.Text.length > 15) {
+  // Engine 2: Wikipedia Search API (Instant facts)
+  if (facts.length < 2) {
+    try {
+      const wikiUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(
+        cleanQuery
+      )}&format=json&origin=*`;
+      const wikiRes = await fetch(wikiUrl, { headers: { 'User-Agent': 'NetBypassAI/1.0' } });
+      if (wikiRes.ok) {
+        const wikiData = await wikiRes.json();
+        const items = wikiData?.query?.search || [];
+        items.slice(0, 3).forEach((item: { title: string; snippet: string }) => {
+          const text = item.snippet.replace(/<[^>]+>/g, '').trim();
+          if (text) {
             facts.push({
-              title: 'Related Information',
-              snippet: t.Text,
-              source: 'DuckDuckGo Knowledge',
+              title: item.title,
+              snippet: text,
+              source: `Wikipedia - ${item.title}`,
             });
           }
         });
       }
-    }
-  } catch (err) {
-    console.warn('DDG API error:', err);
-  }
-
-  // Engine 3: DDG HTML Search Fallback
-  if (facts.length < 2) {
-    try {
-      const htmlUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(cleanQuery)}`;
-      const htmlRes = await fetch(htmlUrl, {
-        headers: {
-          'User-Agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
-        },
-      });
-      if (htmlRes.ok) {
-        const html = await htmlRes.text();
-        const snippetMatches = html.match(/<a class="result__snippet[^>]*>(.*?)<\/a>/gi);
-        if (snippetMatches) {
-          snippetMatches.slice(0, 3).forEach((m) => {
-            const clean = m.replace(/<[^>]+>/g, '').trim();
-            if (clean && clean.length > 15) {
-              facts.push({
-                title: 'Web Search Finding',
-                snippet: clean,
-                source: 'DuckDuckGo Web',
-              });
-            }
-          });
-        }
-      }
-    } catch {
-      /* silent */
+    } catch (err) {
+      console.warn('Wikipedia search fetch error:', err);
     }
   }
 
@@ -110,13 +90,13 @@ export async function POST(request: NextRequest) {
     const lastUserMessage = messages[messages.length - 1];
     const userPrompt = (lastUserMessage.content || '').trim();
 
-    // 1. Fetch multi-engine real-time web facts
+    // 1. Fetch live real-time web facts dynamically
     let searchFacts: SearchFact[] = [];
     if (searchEnabled && userPrompt) {
       searchFacts = await fetchRealTimeFacts(userPrompt);
     }
 
-    // 2. Format file attachment context
+    // 2. Extract uploaded files context
     let fileContext = '';
     if (attachments && Array.isArray(attachments) && attachments.length > 0) {
       fileContext = attachments
@@ -131,8 +111,8 @@ export async function POST(request: NextRequest) {
         .join('\n\n');
     }
 
-    // 3. Generate Natural Conversational Response
-    const reply = generateNaturalConversation(userPrompt, searchFacts, fileContext);
+    // 3. Generate Completely Dynamic Real-Time Answer
+    const reply = synthesizeAnswer(userPrompt, searchFacts, fileContext);
 
     return NextResponse.json({
       role: 'assistant',
@@ -146,62 +126,39 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Generate natural, fluent, ChatGPT/Gemini conversational responses
-function generateNaturalConversation(
+// Fully dynamic real-time synthesis engine with ZERO hardcoded assumptions
+function synthesizeAnswer(
   prompt: string,
   searchFacts: SearchFact[],
   fileContext: string
 ): string {
-  const p = prompt.toLowerCase();
-
-  // Special case: FIFA 2026 World Cup query or future sports queries
-  if (p.includes('fifa') && p.includes('2026')) {
-    return `The **2026 FIFA World Cup** hasn't taken place yet! 🏆
-
-It is scheduled to be held in **June and July 2026** jointly hosted by 16 cities in three North American countries: **Canada, Mexico, and the United States**.
-
-- **Dates**: June 11 – July 19, 2026
-- **Teams**: Expanded for the first time to **48 national teams** (up from 32).
-- **Current Defending Champion**: Argentina (who won the 2022 World Cup in Qatar).
-
-So there is no winner yet for 2026! We will find out in July 2026.`;
-  }
-
-  // Handle uploaded files
+  // If user provided uploaded files, prioritize analyzing the files!
   if (fileContext) {
-    return `I've analyzed your attached document(s):
+    return `I have parsed your attached file(s):
 
 ${fileContext}
 
-Based on this content, let me know if you would like me to rewrite code, summarize key sections, or debug any errors!`;
+Let me know if you would like me to explain specific sections, convert formats, or refactor code!`;
   }
 
-  // Synthesize real-time web facts into a natural conversation
+  // Synthesize real-time web search facts dynamically
   if (searchFacts.length > 0) {
-    const primary = searchFacts[0];
-    const secondary = searchFacts.slice(1);
+    let response = `Based on real-time web search results for **"${prompt}"**:\n\n`;
 
-    let naturalReply = `${primary.snippet}\n\n`;
+    searchFacts.forEach((fact, idx) => {
+      response += `**${idx + 1}. ${fact.title}**\n`;
+      response += `${fact.snippet}\n`;
+      if (fact.source && fact.source.startsWith('http')) {
+        response += `🔗 *Source*: [${fact.source}](${fact.source})\n`;
+      }
+      response += `\n`;
+    });
 
-    if (secondary.length > 0) {
-      naturalReply += `**Key Details:**\n`;
-      secondary.forEach((fact) => {
-        naturalReply += `• **${fact.title}**: ${fact.snippet}\n`;
-      });
-      naturalReply += `\n`;
-    }
-
-    if (primary.source) {
-      naturalReply += `*Source: ${primary.source}*`;
-    }
-
-    return naturalReply;
+    return response;
   }
 
-  // Natural fallback if no facts returned
-  return `Regarding **${prompt}**:
+  // Conversational response tailored strictly to user prompt
+  return `Regarding **"${prompt}"**:
 
-I have processed your request. Web apps, edge proxies, and real-time APIs route requests securely through distributed serverless nodes.
-
-Feel free to ask follow-up questions or toggle Web Search ON for live lookup!`;
+I have processed your query. If you would like more detailed up-to-date web facts, ensure **Web Search: ON** is enabled!`;
 }
