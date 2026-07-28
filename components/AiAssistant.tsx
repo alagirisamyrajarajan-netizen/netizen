@@ -308,16 +308,17 @@ I am your **Generative AI Replybot** (powered by Gemini & real-time search engin
               {msg.role === 'user' ? <User size={15} /> : <Bot size={15} />}
             </div>
 
-            {/* Bubble */}
+            {/* Bubble - Natural Chat Style */}
             <div style={{
-              background: msg.role === 'user' ? 'var(--clr-surface-light)' : 'rgba(255, 255, 255, 0.03)',
-              border: `1px solid ${msg.role === 'user' ? 'var(--clr-primary-glow)' : 'var(--clr-border)'}`,
+              background: msg.role === 'user' ? 'var(--clr-surface-light)' : 'transparent',
+              border: msg.role === 'user' ? '1px solid var(--clr-border)' : 'none',
               borderRadius: 'var(--radius-md)',
-              padding: '14px 18px',
+              padding: msg.role === 'user' ? '12px 16px' : '4px 0',
               color: 'var(--clr-text)',
-              fontSize: 14,
-              lineHeight: 1.6,
-              position: 'relative'
+              fontSize: 15,
+              lineHeight: 1.7,
+              position: 'relative',
+              flex: 1
             }}>
               {/* Attachments preview inside message */}
               {msg.attachments && msg.attachments.length > 0 && (
