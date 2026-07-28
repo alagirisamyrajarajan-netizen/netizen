@@ -127,17 +127,20 @@ function ProxyBrowser({ onNewLog, onReturnHome }: { onNewLog: () => void; onRetu
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     handleProxy();
   };
 
-  const copyProxyUrl = () => {
+  const copyProxyUrl = (e: React.MouseEvent) => {
+    e.preventDefault();
     const link = `${window.location.origin}/api/proxy?url=${encodeURIComponent(url)}`;
     navigator.clipboard.writeText(link);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const downloadPageContent = () => {
+  const downloadPageContent = (e: React.MouseEvent) => {
+    e.preventDefault();
     if (!result?.body) return;
     const blob = new Blob([result.body], { type: result.contentType || 'text/html' });
     const blobUrl = URL.createObjectURL(blob);
@@ -174,8 +177,9 @@ function ProxyBrowser({ onNewLog, onReturnHome }: { onNewLog: () => void; onRetu
           <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
             {onReturnHome && (
               <button
+                type="button"
                 className="btn btn-sm btn-ghost"
-                onClick={onReturnHome}
+                onClick={(e) => { e.preventDefault(); onReturnHome(); }}
                 title="Return Back to Home"
                 style={{ padding: '4px 8px', fontSize: 11, gap: 4, color: 'var(--clr-primary)' }}
               >
@@ -183,8 +187,9 @@ function ProxyBrowser({ onNewLog, onReturnHome }: { onNewLog: () => void; onRetu
               </button>
             )}
             <button
+              type="button"
               className="btn btn-sm btn-ghost"
-              onClick={() => handleProxy(url)}
+              onClick={(e) => { e.preventDefault(); handleProxy(url); }}
               title="Reload page"
               disabled={loading}
               style={{ padding: '6px' }}
@@ -192,8 +197,9 @@ function ProxyBrowser({ onNewLog, onReturnHome }: { onNewLog: () => void; onRetu
               <RotateCw size={13} className={loading ? 'spinner-sm' : ''} />
             </button>
             <button
+              type="button"
               className="btn btn-sm btn-ghost"
-              onClick={() => { setUrl('https://example.com'); handleProxy('https://example.com'); }}
+              onClick={(e) => { e.preventDefault(); setUrl('https://example.com'); handleProxy('https://example.com'); }}
               title="Go Home"
               style={{ padding: '6px' }}
             >
@@ -222,6 +228,7 @@ function ProxyBrowser({ onNewLog, onReturnHome }: { onNewLog: () => void; onRetu
           <div className="browser-actions">
             {result?.body && (
               <button
+                type="button"
                 className="btn btn-sm btn-ghost"
                 onClick={downloadPageContent}
                 title="Download Page Content"
@@ -229,7 +236,7 @@ function ProxyBrowser({ onNewLog, onReturnHome }: { onNewLog: () => void; onRetu
                 <Download size={13} />
               </button>
             )}
-            <button className="btn btn-sm btn-ghost" onClick={copyProxyUrl} title="Copy proxy link">
+            <button type="button" className="btn btn-sm btn-ghost" onClick={copyProxyUrl} title="Copy proxy link">
               {copied ? <Check size={13} color="var(--clr-green)" /> : <Copy size={13} />}
             </button>
             {result?.targetUrl && (
@@ -248,7 +255,12 @@ function ProxyBrowser({ onNewLog, onReturnHome }: { onNewLog: () => void; onRetu
 
         <div className="browser-presets">
           {presets.map((p) => (
-            <button key={p.url} className="preset-chip" onClick={() => { setUrl(p.url); handleProxy(p.url); }}>
+            <button
+              key={p.url}
+              type="button"
+              className="preset-chip"
+              onClick={(e) => { e.preventDefault(); setUrl(p.url); handleProxy(p.url); }}
+            >
               {p.label}
             </button>
           ))}
@@ -264,12 +276,14 @@ function ProxyBrowser({ onNewLog, onReturnHome }: { onNewLog: () => void; onRetu
             {isHtml && (
               <div className="view-toggle" style={{ marginLeft: 'auto' }}>
                 <button
+                  type="button"
                   className={`view-btn ${viewMode === 'render' ? 'active' : ''}`}
                   onClick={() => setViewMode('render')}
                 >
                   <Eye size={11} /> Render
                 </button>
                 <button
+                  type="button"
                   className={`view-btn ${viewMode === 'source' ? 'active' : ''}`}
                   onClick={() => setViewMode('source')}
                 >
@@ -414,6 +428,7 @@ export default function Home() {
             </div>
 
             <button
+              type="button"
               onClick={() => setActiveTab('browser')}
               className="btn btn-sm btn-ghost"
               style={{ fontSize: 12, color: 'var(--clr-primary)' }}
@@ -460,7 +475,7 @@ export default function Home() {
               <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: 'var(--clr-text)' }}>
                 Real-Time Proxy Audit Logs
               </h2>
-              <button className="btn btn-sm btn-ghost" onClick={fetchLogs} disabled={logsLoading}>
+              <button type="button" className="btn btn-sm btn-ghost" onClick={fetchLogs} disabled={logsLoading}>
                 <RefreshCw size={13} className={logsLoading ? 'spinner-sm' : ''} /> Refresh
               </button>
             </div>
