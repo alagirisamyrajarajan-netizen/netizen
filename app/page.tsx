@@ -125,6 +125,16 @@ function ProxyBrowser({ onNewLog, onReturnHome }: { onNewLog: () => void; onRetu
     }
   };
 
+  useEffect(() => {
+    const handleMessage = (e: MessageEvent) => {
+      if (e.data && e.data.type === 'NETBYPASS_NAVIGATE' && e.data.url) {
+        handleProxy(e.data.url);
+      }
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     e.stopPropagation();

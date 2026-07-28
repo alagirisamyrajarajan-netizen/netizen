@@ -15,7 +15,7 @@ function isBlockedUrl(url: string): boolean {
   return BLOCKED_PATTERNS.some((p) => p.test(url));
 }
 
-// Infer proper mime types for images, fonts, and stylesheets if headers are missing or generic
+// Infer proper mime types for images, fonts, and stylesheets
 function inferContentType(url: string, rawContentType?: string | null): string {
   if (
     rawContentType &&
@@ -55,7 +55,7 @@ function normalizeTargetUrl(input: string): string {
   return `https://${trimmed}`;
 }
 
-// ─── Comprehensive HTML & Asset Rewriter + In-Iframe Interceptor ──────
+// ─── HTML & Asset Rewriter + PostMessage Navigation Interceptor ──────
 function processHtmlAndCss(content: string, targetUrl: string, requestOrigin: string): string {
   try {
     const targetObj = new URL(targetUrl);
@@ -72,14 +72,12 @@ function processHtmlAndCss(content: string, targetUrl: string, requestOrigin: st
         return raw;
       }
 
-      // Prevent double proxying if raw already contains /api/proxy?url=
       if (raw.includes('/api/proxy?url=')) {
         return raw;
       }
 
       try {
         const abs = new URL(raw, targetUrl).href;
-        // Prevent proxying requests pointing to our own app origin recursively
         if (abs.startsWith(requestOrigin) && !abs.includes('/api/proxy?url=')) {
           return raw;
         }
@@ -91,12 +89,20 @@ function processHtmlAndCss(content: string, targetUrl: string, requestOrigin: st
 
     let rewritten = content;
 
-    // Inline JS script to intercept link clicks and form submits inside the iframe
-    // Prevents recursive nesting of netbypass-app.vercel.app inside itself!
+    // PostMessage navigation interceptor script:
+    // Communicates directly with parent ProxyBrowser component on link click, form submit, or Enter key!
     const interceptorScript = `
       <script>
         (function() {
           try {
+            function postNav(url) {
+              if (!url) return;
+              try {
+                window.parent.postMessage({ type: 'NETBYPASS_NAVIGATE', url: url }, '*');
+              } catch(e) {}
+            }
+
+            // 1. Intercept Link Clicks
             document.addEventListener('click', function(e) {
               var anchor = e.target.closest('a');
               if (!anchor) return;
@@ -104,21 +110,15 @@ function processHtmlAndCss(content: string, targetUrl: string, requestOrigin: st
               if (!href || href.startsWith('javascript:') || href.startsWith('#') || href.startsWith('data:')) return;
 
               e.preventDefault();
-
-              // If already a proxy link:
-              if (href.includes('/api/proxy?url=')) {
-                window.location.href = href;
-                return;
-              }
-
               try {
                 var absUrl = new URL(href, '${targetUrl}').href;
-                window.location.href = '${requestOrigin}/api/proxy?url=' + encodeURIComponent(absUrl);
+                postNav(absUrl);
               } catch(err) {
-                window.location.href = href;
+                postNav(href);
               }
             }, true);
 
+            // 2. Intercept Form Submits (e.g. Google Search, DuckDuckGo)
             document.addEventListener('submit', function(e) {
               var form = e.target;
               if (!form) return;
@@ -126,20 +126,34 @@ function processHtmlAndCss(content: string, targetUrl: string, requestOrigin: st
               if (action.startsWith('javascript:')) return;
 
               e.preventDefault();
-              var formData = new FormData(form);
-              var params = new URLSearchParams(formData).toString();
-
-              if (action.includes('/api/proxy?url=')) {
-                var finalUrl = action + (action.includes('?') ? '&' : '?') + params;
-                window.location.href = finalUrl;
-                return;
-              }
-
               try {
+                var formData = new FormData(form);
+                var params = new URLSearchParams(formData).toString();
                 var absAction = new URL(action || '', '${targetUrl}').href;
                 var finalUrl = absAction + (absAction.includes('?') ? '&' : '?') + params;
-                window.location.href = '${requestOrigin}/api/proxy?url=' + encodeURIComponent(finalUrl);
+                postNav(finalUrl);
               } catch(err) {}
+            }, true);
+
+            // 3. Intercept Enter Key Press inside Input / Textarea fields
+            document.addEventListener('keydown', function(e) {
+              if (e.key === 'Enter') {
+                var target = e.target;
+                if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) {
+                  var form = target.closest('form');
+                  if (form) {
+                    e.preventDefault();
+                    var action = form.getAttribute('action') || '';
+                    var formData = new FormData(form);
+                    var params = new URLSearchParams(formData).toString();
+                    try {
+                      var absAction = new URL(action || '', '${targetUrl}').href;
+                      var finalUrl = absAction + (absAction.includes('?') ? '&' : '?') + params;
+                      postNav(finalUrl);
+                    } catch(err) {}
+                  }
+                }
+              }
             }, true);
           } catch(err) {}
         })();
