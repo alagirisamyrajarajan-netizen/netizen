@@ -1,7 +1,16 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder_key';
+const supabaseUrl =
+  process.env.NEXT_PUBLIC_SUPABASE_URL &&
+  process.env.NEXT_PUBLIC_SUPABASE_URL !== 'https://placeholder.supabase.co'
+    ? process.env.NEXT_PUBLIC_SUPABASE_URL
+    : 'https://padztopffuyolsmgjaox.supabase.co';
+
+const supabaseAnonKey =
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY &&
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY !== 'placeholder_key'
+    ? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    : 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBhZHp0b3BmZnV5b2xzbWdqYW94Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUxNDIzNzYsImV4cCI6MjEwMDcxODM3Nn0.VehXxImXzazm7vANx8kbRjlWB2i8HNyHrgPUXaEItsE';
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
@@ -25,10 +34,5 @@ export type ProxyRule = {
 };
 
 export const isSupabaseConfigured = () => {
-  return (
-    process.env.NEXT_PUBLIC_SUPABASE_URL !== undefined &&
-    process.env.NEXT_PUBLIC_SUPABASE_URL !== 'https://placeholder.supabase.co' &&
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY !== undefined &&
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY !== 'placeholder_key'
-  );
+  return true;
 };
