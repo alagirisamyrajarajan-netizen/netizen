@@ -41,18 +41,23 @@ function inferContentType(url: string, rawContentType?: string | null): string {
 
 // Normalize user search queries vs valid URLs
 function normalizeTargetUrl(input: string): string {
-  const trimmed = input.trim();
+  let trimmed = input.trim();
   if (!trimmed) return 'https://example.com';
 
-  if (/^https?:\/\//i.test(trimmed)) {
-    return trimmed;
+  // If search query is entered directly without domain dot:
+  if (!/^https?:\/\//i.test(trimmed)) {
+    if (trimmed.includes(' ') || !trimmed.includes('.')) {
+      return `https://www.google.com/search?gbv=1&q=${encodeURIComponent(trimmed)}`;
+    }
+    trimmed = `https://${trimmed}`;
   }
 
-  if (trimmed.includes(' ') || !trimmed.includes('.')) {
-    return `https://html.duckduckgo.com/html/?q=${encodeURIComponent(trimmed)}`;
+  // Force Google Basic View (gbv=1) on Google Search URLs to bypass Google bot blocking screens!
+  if (trimmed.includes('google.com/search') && !trimmed.includes('gbv=1')) {
+    trimmed += (trimmed.includes('?') ? '&' : '?') + 'gbv=1';
   }
 
-  return `https://${trimmed}`;
+  return trimmed;
 }
 
 // ─── HTML & Asset Rewriter + PostMessage Navigation Interceptor ──────
@@ -90,7 +95,6 @@ function processHtmlAndCss(content: string, targetUrl: string, requestOrigin: st
     let rewritten = content;
 
     // PostMessage navigation interceptor script:
-    // Communicates directly with parent ProxyBrowser component on link click, form submit, or Enter key!
     const interceptorScript = `
       <script>
         (function() {
@@ -118,7 +122,7 @@ function processHtmlAndCss(content: string, targetUrl: string, requestOrigin: st
               }
             }, true);
 
-            // 2. Intercept Form Submits (e.g. Google Search, DuckDuckGo)
+            // 2. Intercept Form Submits (Google Search, DuckDuckGo)
             document.addEventListener('submit', function(e) {
               var form = e.target;
               if (!form) return;
@@ -297,13 +301,15 @@ async function handleProxy(request: NextRequest, method: string) {
       method,
       headers: {
         'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+          targetUrl.includes('google.com')
+            ? 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Mobile Safari/537.36'
+            : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
         Accept:
           'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
         'Accept-Language': 'en-US,en;q=0.9',
         'Sec-Ch-Ua': '"Google Chrome";v="123", "Not:A-Brand";v="8", "Chromium";v="123"',
-        'Sec-Ch-Ua-Mobile': '?0',
-        'Sec-Ch-Ua-Platform': '"Windows"',
+        'Sec-Ch-Ua-Mobile': targetUrl.includes('google.com') ? '?1' : '?0',
+        'Sec-Ch-Ua-Platform': targetUrl.includes('google.com') ? '"Android"' : '"Windows"',
         'Sec-Fetch-Dest': 'document',
         'Sec-Fetch-Mode': 'navigate',
         'Sec-Fetch-Site': 'none',
