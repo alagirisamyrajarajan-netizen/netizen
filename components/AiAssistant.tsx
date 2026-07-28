@@ -22,7 +22,12 @@ type FileAttachment = {
   content?: string;
 };
 
-export default function AiAssistant() {
+interface AiAssistantProps {
+  onClose?: () => void;
+  compact?: boolean;
+}
+
+export default function AiAssistant({ onClose, compact = false }: AiAssistantProps) {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: 'welcome-1',
@@ -251,6 +256,18 @@ I am your **Generative AI Replybot** (powered by Gemini & real-time search engin
           >
             <Trash2 size={13} />
           </button>
+
+          {onClose && (
+            <button
+              type="button"
+              className="btn btn-sm btn-ghost"
+              onClick={onClose}
+              title="Close AI Assistant"
+              style={{ padding: '6px', color: 'var(--clr-text-muted)' }}
+            >
+              ✕
+            </button>
+          )}
         </div>
       </div>
 
