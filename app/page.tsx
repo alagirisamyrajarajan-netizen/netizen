@@ -77,9 +77,25 @@ function ProxyBrowser({ onNewLog, onReturnHome }: { onNewLog: () => void; onRetu
     if (!proxyTarget.trim()) return;
 
     let normalised = proxyTarget.trim();
+
+    // Unwrap raw proxy string if passed
+    if (normalised.includes('/api/proxy?url=')) {
+      try {
+        const idx = normalised.indexOf('/api/proxy?url=');
+        const param = normalised.slice(idx + '/api/proxy?url='.length);
+        normalised = decodeURIComponent(param);
+      } catch {
+        /* silent */
+      }
+    }
+
+    if (normalised.startsWith('//')) {
+      normalised = 'https:' + normalised;
+    }
+
     if (!/^https?:\/\//i.test(normalised)) {
       if (normalised.includes(' ') || !normalised.includes('.')) {
-        normalised = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(normalised)}`;
+        normalised = `https://www.google.com/search?gbv=1&q=${encodeURIComponent(normalised)}`;
       } else {
         normalised = `https://${normalised}`;
       }

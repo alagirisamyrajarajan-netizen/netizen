@@ -39,12 +39,27 @@ function inferContentType(url: string, rawContentType?: string | null): string {
   return rawContentType || 'text/html';
 }
 
-// Normalize user search queries vs valid URLs
+// Unwrap proxy parameters and normalize user search queries vs valid URLs
 function normalizeTargetUrl(input: string): string {
   let trimmed = input.trim();
   if (!trimmed) return 'https://example.com';
 
-  // If search query is entered directly without domain dot:
+  // Unwrap proxy parameter if raw proxy string was passed
+  if (trimmed.includes('/api/proxy?url=')) {
+    try {
+      const idx = trimmed.indexOf('/api/proxy?url=');
+      const param = trimmed.slice(idx + '/api/proxy?url='.length);
+      trimmed = decodeURIComponent(param);
+    } catch {
+      /* silent */
+    }
+  }
+
+  // Convert protocol-relative URLs
+  if (trimmed.startsWith('//')) {
+    trimmed = 'https:' + trimmed;
+  }
+
   if (!/^https?:\/\//i.test(trimmed)) {
     if (trimmed.includes(' ') || !trimmed.includes('.')) {
       return `https://www.google.com/search?gbv=1&q=${encodeURIComponent(trimmed)}`;
@@ -52,7 +67,6 @@ function normalizeTargetUrl(input: string): string {
     trimmed = `https://${trimmed}`;
   }
 
-  // Force Google Basic View (gbv=1) on Google Search URLs to bypass Google bot blocking screens!
   if (trimmed.includes('google.com/search') && !trimmed.includes('gbv=1')) {
     trimmed += (trimmed.includes('?') ? '&' : '?') + 'gbv=1';
   }
@@ -60,7 +74,26 @@ function normalizeTargetUrl(input: string): string {
   return trimmed;
 }
 
-// ─── HTML & Asset Rewriter + PostMessage Navigation Interceptor ──────
+// Rewrite relative url(...) in CSS stylesheets
+function processCssUrls(cssContent: string, targetUrl: string, requestOrigin: string): string {
+  return cssContent.replace(/url\(['"]?([^'"\)]+)['"]?\)/gi, (_, rawUrl) => {
+    if (!rawUrl || rawUrl.startsWith('data:') || rawUrl.startsWith('blob:') || rawUrl.startsWith('#')) {
+      return `url("${rawUrl}")`;
+    }
+    let cleanRaw = rawUrl;
+    if (cleanRaw.startsWith('//')) {
+      cleanRaw = 'https:' + cleanRaw;
+    }
+    try {
+      const abs = new URL(cleanRaw, targetUrl).href;
+      return `url("${requestOrigin}/api/proxy?url=${encodeURIComponent(abs)}")`;
+    } catch {
+      return `url("${rawUrl}")`;
+    }
+  });
+}
+
+// ─── Comprehensive HTML & Asset Rewriter + PostMessage Navigation Interceptor ──────
 function processHtmlAndCss(content: string, targetUrl: string, requestOrigin: string): string {
   try {
     const targetObj = new URL(targetUrl);
@@ -77,12 +110,17 @@ function processHtmlAndCss(content: string, targetUrl: string, requestOrigin: st
         return raw;
       }
 
-      if (raw.includes('/api/proxy?url=')) {
-        return raw;
+      let cleanRaw = raw;
+      if (cleanRaw.startsWith('//')) {
+        cleanRaw = 'https:' + cleanRaw;
+      }
+
+      if (cleanRaw.includes('/api/proxy?url=')) {
+        return cleanRaw;
       }
 
       try {
-        const abs = new URL(raw, targetUrl).href;
+        const abs = new URL(cleanRaw, targetUrl).href;
         if (abs.startsWith(requestOrigin) && !abs.includes('/api/proxy?url=')) {
           return raw;
         }
@@ -259,6 +297,8 @@ async function handleProxy(request: NextRequest, method: string) {
 
         if (resCt.includes('text/html')) {
           finalBody = processHtmlAndCss(finalBody, targetUrl, requestOrigin);
+        } else if (resCt.includes('text/css')) {
+          finalBody = processCssUrls(finalBody, targetUrl, requestOrigin);
         }
 
         const encoder = new TextEncoder();
@@ -333,9 +373,11 @@ async function handleProxy(request: NextRequest, method: string) {
 
     if (contentType.includes('text/html') || contentType.includes('text/css')) {
       const rawText = await response.text();
-      finalResponseBody = contentType.includes('text/html')
-        ? processHtmlAndCss(rawText, targetUrl, requestOrigin)
-        : rawText;
+      if (contentType.includes('text/html')) {
+        finalResponseBody = processHtmlAndCss(rawText, targetUrl, requestOrigin);
+      } else {
+        finalResponseBody = processCssUrls(rawText, targetUrl, requestOrigin);
+      }
     } else {
       finalResponseBody = await response.arrayBuffer();
     }
