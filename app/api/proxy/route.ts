@@ -15,10 +15,26 @@ function isBlockedUrl(url: string): boolean {
   return BLOCKED_PATTERNS.some((p) => p.test(url));
 }
 
-// ─── HTML & Asset Rewriter ──────────────────────────────────────────
-// Rewrites relative & absolute URLs inside HTML/CSS to route through
-// NetBypass proxy (/api/proxy?url=...) so that logos, images, stylesheets,
-// and scripts load 100% via the edge proxy, bypassing local WiFi blocks.
+// Normalize user search queries vs valid URLs
+function normalizeTargetUrl(input: string): string {
+  const trimmed = input.trim();
+  if (!trimmed) return 'https://example.com';
+
+  // If already starts with http/https
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+
+  // If input contains spaces or no dot, treat as search query
+  if (trimmed.includes(' ') || !trimmed.includes('.')) {
+    return `https://html.duckduckgo.com/html/?q=${encodeURIComponent(trimmed)}`;
+  }
+
+  // Otherwise assume it's a domain name (e.g. "google.com")
+  return `https://${trimmed}`;
+}
+
+// ─── HTML & Asset Rewriter + In-Iframe Interceptor ────────────────────
 function processHtmlAndCss(content: string, targetUrl: string, requestOrigin: string): string {
   try {
     const targetObj = new URL(targetUrl);
@@ -44,8 +60,46 @@ function processHtmlAndCss(content: string, targetUrl: string, requestOrigin: st
 
     let rewritten = content;
 
-    // 1. Inject <base> tag and referrer control
-    const baseTag = `<base href="${targetOrigin}/" /><meta name="referrer" content="no-referrer" />`;
+    // Inline JS script to intercept link clicks and form submits inside the iframe
+    // so navigating or searching inside the browser stays in the proxy with NO 404s!
+    const interceptorScript = `
+      <script>
+        (function() {
+          try {
+            document.addEventListener('click', function(e) {
+              var anchor = e.target.closest('a');
+              if (anchor && anchor.href && !anchor.href.startsWith('javascript:')) {
+                var href = anchor.getAttribute('href');
+                if (href && !href.startsWith('#')) {
+                  e.preventDefault();
+                  var absUrl = anchor.href;
+                  if (absUrl.startsWith(window.location.origin + '/api/proxy?url=')) {
+                    window.location.href = absUrl;
+                  } else {
+                    window.location.href = '${requestOrigin}/api/proxy?url=' + encodeURIComponent(absUrl);
+                  }
+                }
+              }
+            }, true);
+
+            document.addEventListener('submit', function(e) {
+              var form = e.target;
+              if (form && form.action) {
+                e.preventDefault();
+                var formData = new FormData(form);
+                var params = new URLSearchParams(formData).toString();
+                var actionUrl = form.action;
+                var finalUrl = actionUrl + (actionUrl.includes('?') ? '&' : '?') + params;
+                window.location.href = '${requestOrigin}/api/proxy?url=' + encodeURIComponent(finalUrl);
+              }
+            }, true);
+          } catch(err) {}
+        })();
+      </script>
+    `;
+
+    // 1. Inject <base> tag, referrer policy, and interceptor script
+    const baseTag = `<base href="${targetOrigin}/" /><meta name="referrer" content="no-referrer" />${interceptorScript}`;
     if (/<head[^>]*>/i.test(rewritten)) {
       rewritten = rewritten.replace(/(<head[^>]*>)/i, `$1${baseTag}`);
     } else if (/<html[^>]*>/i.test(rewritten)) {
@@ -109,21 +163,13 @@ export async function OPTIONS() {
 
 async function handleProxy(request: NextRequest, method: string) {
   const { searchParams, origin: requestOrigin } = new URL(request.url);
-  const targetUrl = searchParams.get('url');
+  const rawInput = searchParams.get('url');
 
-  if (!targetUrl) {
+  if (!rawInput) {
     return NextResponse.json({ error: 'Missing ?url= parameter' }, { status: 400 });
   }
 
-  // Basic URL validation
-  try {
-    const parsed = new URL(targetUrl);
-    if (!['http:', 'https:'].includes(parsed.protocol)) {
-      return NextResponse.json({ error: 'Only HTTP/HTTPS URLs are allowed' }, { status: 400 });
-    }
-  } catch {
-    return NextResponse.json({ error: 'Invalid URL format' }, { status: 400 });
-  }
+  const targetUrl = normalizeTargetUrl(rawInput);
 
   if (isBlockedUrl(targetUrl)) {
     return NextResponse.json(

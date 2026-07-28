@@ -1,11 +1,13 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { supabase } from '@/lib/supabase';
+import type { User } from '@supabase/supabase-js';
 import {
   Shield, Zap, Globe, Lock, Activity, Settings,
   RefreshCw, Send, Copy, Check, AlertTriangle,
   Server, ChevronRight, Plus, ExternalLink,
-  Monitor, Code, Eye
+  Monitor, Code, Eye, User as UserIcon, LogOut, LogIn
 } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────
@@ -548,7 +550,27 @@ function RulesManager() {
 export default function Home() {
   const [bypassEnabled, setBypassEnabled] = useState(true);
   const [logRefresh, setLogRefresh] = useState(0);
+  const [user, setUser] = useState<User | null>(null);
+
   const triggerLogRefresh = () => setLogRefresh(n => n + 1);
+
+  // Subscribe to Supabase auth state changes
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      setUser(data.user);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+  };
 
   const features = [
     { icon: '🖥️', iconClass: 'feature-icon-orange', title: 'Built-in Browser',   desc: 'Renders proxied websites inline — browse blocked sites directly in the app.' },
@@ -578,6 +600,40 @@ export default function Home() {
             <a href="#browser" className="nav-link">Browser</a>
             <a href="#logs" className="nav-link">Logs</a>
             <a href="#rules" className="nav-link">Rules</a>
+
+            {/* Auth status */}
+            {user ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{
+                  fontSize: 12,
+                  color: 'var(--clr-text)',
+                  fontFamily: 'var(--font-mono)',
+                  background: 'rgba(246, 130, 31, 0.1)',
+                  padding: '4px 10px',
+                  borderRadius: 'var(--radius-sm)',
+                  border: '1px solid rgba(246, 130, 31, 0.2)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6
+                }}>
+                  <UserIcon size={12} color="var(--clr-primary)" />
+                  {user.email?.split('@')[0]}
+                </span>
+                <button
+                  onClick={handleSignOut}
+                  className="btn btn-sm btn-ghost"
+                  title="Sign Out"
+                  style={{ fontSize: 12, padding: '4px 10px' }}
+                >
+                  <LogOut size={12} /> Sign Out
+                </button>
+              </div>
+            ) : (
+              <a href="/login" className="btn btn-sm btn-primary" style={{ fontSize: 12 }}>
+                <LogIn size={13} /> Sign In
+              </a>
+            )}
+
             <label className="toggle" htmlFor="bypass-toggle" title="Toggle bypass">
               <input id="bypass-toggle" type="checkbox" checked={bypassEnabled}
                 onChange={e => setBypassEnabled(e.target.checked)} />
