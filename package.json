@@ -1,0 +1,25 @@
+{
+  "name": "network-bypass-app",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "setup-db": "node scripts/setup-db.mjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.3",
+    "next": "^15.3.5",
+    "react": "^19",
+    "react-dom": "^19",
+    "lucide-react": "^0.400.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "typescript": "^5"
+  }
+}
