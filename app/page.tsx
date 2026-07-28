@@ -7,7 +7,8 @@ import {
   Shield, Zap, Globe, Lock, Activity, Settings,
   RefreshCw, Send, Copy, Check, AlertTriangle,
   Server, ChevronRight, Plus, ExternalLink,
-  Monitor, Code, Eye, User as UserIcon, LogOut, LogIn
+  Monitor, Code, Eye, User as UserIcon, LogOut, LogIn,
+  ArrowLeft, ArrowRight, RotateCw, Home as HomeIcon, Download
 } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────
@@ -132,7 +133,7 @@ function NetworkDiagram() {
   );
 }
 
-// ─── Proxy Browser (the main new component) ────────────────
+// ─── Proxy Browser (the main component) ──────────────────────
 function ProxyBrowser({ onNewLog }: { onNewLog: () => void }) {
   const [url, setUrl] = useState('https://example.com');
   const [loading, setLoading] = useState(false);
@@ -146,8 +147,16 @@ function ProxyBrowser({ onNewLog }: { onNewLog: () => void }) {
     const proxyTarget = targetUrl || url;
     if (!proxyTarget.trim()) return;
 
-    // Auto-add https:// if missing
-    const normalised = proxyTarget.startsWith('http') ? proxyTarget : `https://${proxyTarget}`;
+    // Normalize target (auto-prefix https:// or convert search query)
+    let normalised = proxyTarget.trim();
+    if (!/^https?:\/\//i.test(normalised)) {
+      if (normalised.includes(' ') || !normalised.includes('.')) {
+        normalised = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(normalised)}`;
+      } else {
+        normalised = `https://${normalised}`;
+      }
+    }
+
     setUrl(normalised);
     setCurrentUrl(normalised);
     setLoading(true);
@@ -201,14 +210,29 @@ function ProxyBrowser({ onNewLog }: { onNewLog: () => void }) {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const downloadPageContent = () => {
+    if (!result?.body) return;
+    const blob = new Blob([result.body], { type: result.contentType || 'text/html' });
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = `proxied-page-${Date.now()}.${result.contentType.includes('json') ? 'json' : 'html'}`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(blobUrl);
+  };
+
   const isHtml = result?.contentType?.includes('text/html');
   const iframeProxySrc = result?.targetUrl ? `/api/proxy?url=${encodeURIComponent(result.targetUrl)}` : '';
 
   const presets = [
+    { label: 'Google Search', url: 'https://html.duckduckgo.com' },
+    { label: 'YouTube', url: 'https://www.youtube.com' },
+    { label: 'Wikipedia', url: 'https://en.wikipedia.org' },
     { label: 'Example.com', url: 'https://example.com' },
-    { label: 'httpbin.org', url: 'https://httpbin.org/get' },
+    { label: 'httpbin API', url: 'https://httpbin.org/get' },
     { label: 'GitHub API', url: 'https://api.github.com' },
-    { label: 'My IP', url: 'https://api.ipify.org?format=json' },
   ];
 
   return (
@@ -221,6 +245,29 @@ function ProxyBrowser({ onNewLog }: { onNewLog: () => void }) {
             <span className="dot dot-yellow" />
             <span className="dot dot-green" />
           </div>
+
+          {/* Navigation Controls */}
+          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+            <button
+              className="btn btn-sm btn-ghost"
+              onClick={() => handleProxy(url)}
+              title="Reload page"
+              disabled={loading}
+              style={{ padding: '6px' }}
+            >
+              <RotateCw size={13} className={loading ? 'spinner-sm' : ''} />
+            </button>
+            <button
+              className="btn btn-sm btn-ghost"
+              onClick={() => { setUrl('https://example.com'); handleProxy('https://example.com'); }}
+              title="Go Home"
+              style={{ padding: '6px' }}
+            >
+              <HomeIcon size={13} />
+            </button>
+          </div>
+
+          {/* Address & Search Bar */}
           <form onSubmit={handleSubmit} className="browser-address-bar">
             <div className="address-wrap">
               <Lock size={13} color="var(--clr-green)" style={{ flexShrink: 0 }} />
@@ -230,15 +277,26 @@ function ProxyBrowser({ onNewLog }: { onNewLog: () => void }) {
                 className="address-input"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
-                placeholder="https://any-website.com"
+                placeholder="Search or enter web address (e.g. google.com, youtube.com, or search terms)"
               />
               {loading && <div className="spinner spinner-sm" />}
             </div>
             <button id="proxy-send-btn" type="submit" className="btn btn-primary btn-go" disabled={loading}>
-              {loading ? 'Loading…' : 'Go'}
+              {loading ? 'Routing…' : 'Go'}
             </button>
           </form>
+
+          {/* Action Buttons */}
           <div className="browser-actions">
+            {result?.body && (
+              <button
+                className="btn btn-sm btn-ghost"
+                onClick={downloadPageContent}
+                title="Download Page Content"
+              >
+                <Download size={13} />
+              </button>
+            )}
             <button className="btn btn-sm btn-ghost" onClick={copyProxyUrl} title="Copy proxy link">
               {copied ? <Check size={13} color="var(--clr-green)" /> : <Copy size={13} />}
             </button>
@@ -309,7 +367,7 @@ function ProxyBrowser({ onNewLog }: { onNewLog: () => void }) {
               <div style={{ fontSize: 48, marginBottom: 16 }}>🌐</div>
               <h3 style={{ color: 'var(--clr-text)', marginBottom: 8 }}>NetBypass Browser</h3>
               <p style={{ color: 'var(--clr-text-muted)', maxWidth: 420, textAlign: 'center', lineHeight: 1.6 }}>
-                Enter any URL above and click <strong>Go</strong>.<br />
+                Enter any URL or search terms above and click <strong>Go</strong>.<br />
                 Your request is routed through Vercel's global edge network,<br />
                 bypassing your local WiFi firewall.
               </p>

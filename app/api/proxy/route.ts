@@ -197,7 +197,7 @@ async function handleProxy(request: NextRequest, method: string) {
 
         const encoder = new TextEncoder();
         return new NextResponse(encoder.encode(finalBody), {
-          status: responseData.statusCode || 200,
+          status: 200,
           headers: {
             'Content-Type': resCt,
             'Access-Control-Allow-Origin': '*',
@@ -234,9 +234,18 @@ async function handleProxy(request: NextRequest, method: string) {
       method,
       headers: {
         'User-Agent':
-          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+        Accept:
+          'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
         'Accept-Language': 'en-US,en;q=0.9',
+        'Sec-Ch-Ua': '"Google Chrome";v="123", "Not:A-Brand";v="8", "Chromium";v="123"',
+        'Sec-Ch-Ua-Mobile': '?0',
+        'Sec-Ch-Ua-Platform': '"Windows"',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+        'Upgrade-Insecure-Requests': '1',
       },
       redirect: 'follow',
     };
@@ -262,9 +271,10 @@ async function handleProxy(request: NextRequest, method: string) {
       finalResponseBody = await response.arrayBuffer();
     }
 
-    responseSize = typeof finalResponseBody === 'string'
-      ? new Blob([finalResponseBody]).size
-      : (finalResponseBody as ArrayBuffer).byteLength;
+    responseSize =
+      typeof finalResponseBody === 'string'
+        ? new Blob([finalResponseBody]).size
+        : (finalResponseBody as ArrayBuffer).byteLength;
     success = response.ok;
     const latency = Date.now() - startTime;
 
@@ -286,8 +296,10 @@ async function handleProxy(request: NextRequest, method: string) {
       })();
     }
 
+    // Always return HTTP 200 for proxied HTML/content so Next.js never replaces
+    // the iframe body with Next.js internal 404 page!
     return new NextResponse(finalResponseBody, {
-      status: statusCode,
+      status: 200,
       headers: {
         'Access-Control-Allow-Origin': '*',
         'X-Proxied-By': 'NetBypass/Direct',
