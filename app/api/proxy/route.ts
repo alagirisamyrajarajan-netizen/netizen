@@ -15,7 +15,7 @@ function isBlockedUrl(url: string): boolean {
   return BLOCKED_PATTERNS.some((p) => p.test(url));
 }
 
-// Infer proper mime types for images, fonts, and stylesheets
+// Infer proper mime types for images, fonts, stylesheets, and JSON APIs
 function inferContentType(url: string, rawContentType?: string | null): string {
   if (
     rawContentType &&
@@ -36,6 +36,7 @@ function inferContentType(url: string, rawContentType?: string | null): string {
   if (cleanUrl.endsWith('.woff')) return 'font/woff';
   if (cleanUrl.endsWith('.css')) return 'text/css';
   if (cleanUrl.endsWith('.js')) return 'text/javascript';
+  if (cleanUrl.includes('/youtubei/') || cleanUrl.endsWith('.json')) return 'application/json';
   return rawContentType || 'text/html';
 }
 
@@ -67,7 +68,7 @@ function normalizeTargetUrl(input: string): string {
     trimmed = `https://${trimmed}`;
   }
 
-  // Route YouTube desktop URLs to m.youtube.com to bypass Polymer SPA CORS skeleton blocks!
+  // Route YouTube desktop URLs to m.youtube.com to bypass desktop Polymer SPA CORS blocks
   if (/^https?:\/\/(www\.)?youtube\.com/i.test(trimmed)) {
     trimmed = trimmed.replace(/^https?:\/\/(www\.)?youtube\.com/i, 'https://m.youtube.com');
   }
@@ -98,7 +99,7 @@ function processCssUrls(cssContent: string, targetUrl: string, requestOrigin: st
   });
 }
 
-// ─── Comprehensive HTML & Asset Rewriter + PostMessage Navigation Interceptor ──────
+// ─── Comprehensive HTML & Asset Rewriter + In-Iframe Fetch & XHR Proxy Interceptor ──────
 function processHtmlAndCss(content: string, targetUrl: string, requestOrigin: string): string {
   try {
     const targetObj = new URL(targetUrl);
@@ -137,11 +138,56 @@ function processHtmlAndCss(content: string, targetUrl: string, requestOrigin: st
 
     let rewritten = content;
 
-    // PostMessage navigation interceptor script:
+    // PostMessage navigation + Monkey-patch fetch & XHR to proxy all SPA API calls:
     const interceptorScript = `
       <script>
         (function() {
           try {
+            var targetUrl = '${targetUrl}';
+            var requestOrigin = '${requestOrigin}';
+
+            // 1. Monkey-patch window.fetch to route all API calls (e.g. YouTube InnerTube API) through /api/proxy
+            if (window.fetch) {
+              var origFetch = window.fetch;
+              window.fetch = function(input, init) {
+                try {
+                  var urlStr = (typeof input === 'string') ? input : (input && input.url ? input.url : '');
+                  if (urlStr && typeof urlStr === 'string' && !urlStr.startsWith('data:') && !urlStr.startsWith('blob:')) {
+                    if (!urlStr.includes('/api/proxy?url=')) {
+                      var absUrl = new URL(urlStr, targetUrl).href;
+                      if (!absUrl.startsWith(requestOrigin)) {
+                        var proxyUrl = requestOrigin + '/api/proxy?url=' + encodeURIComponent(absUrl);
+                        if (typeof input === 'string') {
+                          input = proxyUrl;
+                        } else if (input && input.url) {
+                          input = new Request(proxyUrl, input);
+                        }
+                      }
+                    }
+                  }
+                } catch(e) {}
+                return origFetch.call(this, input, init);
+              };
+            }
+
+            // 2. Monkey-patch XMLHttpRequest to route all AJAX calls through /api/proxy
+            if (window.XMLHttpRequest) {
+              var origOpen = XMLHttpRequest.prototype.open;
+              XMLHttpRequest.prototype.open = function(method, url, async, user, pass) {
+                try {
+                  if (url && typeof url === 'string' && !url.startsWith('data:') && !url.startsWith('blob:')) {
+                    if (!url.includes('/api/proxy?url=')) {
+                      var absUrl = new URL(url, targetUrl).href;
+                      if (!absUrl.startsWith(requestOrigin)) {
+                        url = requestOrigin + '/api/proxy?url=' + encodeURIComponent(absUrl);
+                      }
+                    }
+                  }
+                } catch(e) {}
+                return origOpen.call(this, method, url, async, user, pass);
+              };
+            }
+
             function postNav(url) {
               if (!url) return;
               try {
@@ -149,7 +195,7 @@ function processHtmlAndCss(content: string, targetUrl: string, requestOrigin: st
               } catch(e) {}
             }
 
-            // 1. Intercept Link Clicks
+            // 3. Intercept Link Clicks
             document.addEventListener('click', function(e) {
               var anchor = e.target.closest('a');
               if (!anchor) return;
@@ -158,14 +204,14 @@ function processHtmlAndCss(content: string, targetUrl: string, requestOrigin: st
 
               e.preventDefault();
               try {
-                var absUrl = new URL(href, '${targetUrl}').href;
+                var absUrl = new URL(href, targetUrl).href;
                 postNav(absUrl);
               } catch(err) {
                 postNav(href);
               }
             }, true);
 
-            // 2. Intercept Form Submits
+            // 4. Intercept Form Submits
             document.addEventListener('submit', function(e) {
               var form = e.target;
               if (!form) return;
@@ -176,13 +222,13 @@ function processHtmlAndCss(content: string, targetUrl: string, requestOrigin: st
               try {
                 var formData = new FormData(form);
                 var params = new URLSearchParams(formData).toString();
-                var absAction = new URL(action || '', '${targetUrl}').href;
+                var absAction = new URL(action || '', targetUrl).href;
                 var finalUrl = absAction + (absAction.includes('?') ? '&' : '?') + params;
                 postNav(finalUrl);
               } catch(err) {}
             }, true);
 
-            // 3. Intercept Enter Key Press inside Input / Textarea fields
+            // 5. Intercept Enter Key Press
             document.addEventListener('keydown', function(e) {
               if (e.key === 'Enter') {
                 var target = e.target;
@@ -194,7 +240,7 @@ function processHtmlAndCss(content: string, targetUrl: string, requestOrigin: st
                     var formData = new FormData(form);
                     var params = new URLSearchParams(formData).toString();
                     try {
-                      var absAction = new URL(action || '', '${targetUrl}').href;
+                      var absAction = new URL(action || '', targetUrl).href;
                       var finalUrl = absAction + (absAction.includes('?') ? '&' : '?') + params;
                       postNav(finalUrl);
                     } catch(err) {}
